@@ -158,13 +158,29 @@ class DNAPro(nn.Module):
     ) -> torch.Tensor:
         """Generate weights with chunked processing"""
         W = torch.zeros(out_dim, in_dim, device=device)
-        
-        chunk_rows = min(self.chunk_size // in_dim, out_dim)
+
+        # At least one row per chunk even when in_dim > chunk_size
+        chunk_rows = max(1, min(self.chunk_size // max(1, in_dim), out_dim))
+        j = torch.linspace(-1, 1, in_dim, device=device)
+        xavier_scale = (2.0 / (in_dim + out_dim)) ** 0.5
         for start in range(0, out_dim, chunk_rows):
             end = min(start + chunk_rows, out_dim)
-            chunk = self.generate_weights(end - start, in_dim, device)
-            W[start:end, :] = chunk
-        
+            # Global row coordinates so chunked == unchunked generation
+            if out_dim == 1:
+                i_chunk = torch.zeros(end - start, device=device)
+            else:
+                i_chunk = torch.linspace(
+                    -1 + 2.0 * start / (out_dim - 1),
+                    -1 + 2.0 * (end - 1) / (out_dim - 1),
+                    end - start,
+                    device=device,
+                )
+            grid_i, grid_j = torch.meshgrid(i_chunk, j, indexing="ij")
+            coords = torch.stack([grid_i.flatten(), grid_j.flatten()], dim=1)
+            feats = self._generate_fourier_features(coords)
+            raw = self.net(feats).view(end - start, in_dim)
+            W[start:end, :] = raw * self.scale * xavier_scale
+
         return W
     
     def generate_layer_weights(
