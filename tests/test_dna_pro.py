@@ -43,8 +43,8 @@ class TestDNAProInitialization:
         """Test parameter counting"""
         dna = DNAPro(num_freqs=32, hidden_size=64)
         count = dna.count_parameters()
-        # 32*2*64 + 64 + 64*64 + 64 + 64*1 + 1 + 1
-        expected = 32*2*64 + 64 + 64*64 + 64 + 64*1 + 1 + 1
+        # 4-layer MLP: 3x Linear(64->64) + Linear(64->1), plus learnable scale
+        expected = 3*(64*64 + 64) + (64*1 + 1) + 1
         assert count == expected
 
 
