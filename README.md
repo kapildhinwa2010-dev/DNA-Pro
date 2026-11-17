@@ -1,69 +1,58 @@
 # DNA-Pro
 
-[![CI](https://github.com/kapildhinwa2010-dev/DNA-Pro/actions/workflows/ci.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA-Pro/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/kapildhinwa2010-dev/DNA-Pro/actions/workflows/codeql.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA-Pro/actions/workflows/codeql.yml)
+DNA-Pro is a small PyTorch module that maps two-dimensional coordinates through Fourier features and a multilayer perceptron to generate tensors shaped like neural-network weight matrices. **Status: prototype.** The repository contains a generator implementation and tests, but no training or fitting procedure that learns useful weights from an existing model.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
+## Implemented functionality
 
-Deepest member of the DNA weight-generator family: 3 hidden layers, inference-mode freezing.
+- `DNAPro` creates a fixed random Fourier projection and a four-linear-layer MLP with three SiLU hidden layers. Its `generate_weights(out_dim, in_dim)` method returns a tensor with shape `(out_dim, in_dim)`.
+- Large matrices are processed in row chunks according to `chunk_size`.
+- `generate_layer_weights` generates tensors for a mapping of layer names to `(out_dim, in_dim)` shapes. `generate_model_weights` finds `torch.nn.Linear` modules and returns generated weight tensors and, where present, bias tensors shaped `(1, out_features)`.
+- `DNAProConfig`, `DNAProWrapper`, and `create_dna_pro` provide configuration, wrapper, and factory interfaces.
+- Parameters are frozen by default (`inference_mode=True`); construct with `inference_mode=False` to leave them trainable. The repository does not provide a training loop or learned checkpoint.
+- `count_parameters` counts the generator's trainable parameters. `compression_ratio` reports a parameter-count ratio only; it does not measure storage savings for a fitted model or preserve model accuracy.
 
-## What it does
+The generated values come from the generator's initialization unless a caller trains the network. They are not recovered or pretrained weights, and the repository does not provide a procedure for fitting them to a model or applying the returned tensors back into one.
 
-DNAPro maps a 2D coordinate grid through Fourier features and a 3-layer
-SiLU MLP (~257K parameters by default) to scalar weight values, with
-chunked generation for large shapes and an inference_mode that freezes
-all parameters.
+## Requirements and running from source
 
-## Installation
+The project metadata specifies Python 3.10 or newer, PyTorch 2.0 or newer, and NumPy 1.24 or newer. From a checkout, install the listed dependencies and run the included demonstration:
 
-    pip install torch numpy pytest
+```bash
+git clone https://github.com/kapildhinwa2010-dev/DNA-Pro.git
+cd DNA-Pro
+python -m pip install -r requirements.txt
+python dna_pro.py
+```
 
-## Usage
+The demo creates sample tensors and prints their shapes. To call the API from the repository root:
 
-    from dna_pro import create_dna_pro, DNAProWrapper
+```python
+from dna_pro import create_dna_pro
 
-    dna = create_dna_pro(num_freqs=64, hidden_size=128)
-    W = dna.generate_weights(1000, 1000)
+generator = create_dna_pro(num_freqs=8, hidden_size=16)
+weights = generator.generate_weights(out_dim=4, in_dim=3)
+print(weights.shape)  # torch.Size([4, 3])
+```
 
-    # Frozen-parameter inference
-    dna = create_dna_pro(inference_mode=True)
+`generate_model_weights` only handles `torch.nn.Linear` layers; it returns generated tensors rather than modifying the supplied model.
 
-    wrapper = DNAProWrapper()
-    weights = wrapper.generate_for_model(model)
+## Tests and CI
 
-## API
+At commit `736d62ed74107b3a6e630ab30a00ead0c1a5e565`, the test suite was run locally with Python 3.12.3 using `python3 -m pytest -q`: **23 passed**. The `python3 dna_pro.py` demonstration also ran successfully. These are local results; remote GitHub Actions run statuses were not checked. The CI workflow defines test jobs for Python 3.10, 3.11, and 3.12, and the repository also defines a CodeQL workflow.
 
-- DNAPro(num_freqs=64, hidden_size=128, chunk_size=16384,
-  inference_mode=True): generate_weights, generate_layer_weights,
-  generate_model_weights, count_parameters, compression_ratio
-- DNAProWrapper / DNAProConfig: generate_weights(shapes),
-  generate_for_model(model)
-- create_dna_pro(...) factory
+To run tests from a checkout:
 
-## Honest results and limitations
+```bash
+python -m pytest -q
+```
 
-- The ratio table (up to 39,130x) is parameter arithmetic: output
-  elements divided by ~257K generator params. For models under ~650K
-  parameters the generator is bigger than the model - no compression.
-- "Production-ready" is not a claim we can back: no deployment
-  benchmarks, no accuracy evaluation, and no reconstruction-quality
-  measurement are included.
-- An untrained generator outputs a smooth random field, not useful
-  weights. Fitting it per matrix is the real cost and is not included.
-- Generation of billion-parameter shapes is impractical on CPU
-  (minutes to hours) and memory-bound everywhere.
+## Limitations
 
-## Negative results (from the source experiments)
-
-- The reserv.dean-part-2 log records that generated-weight
-  reconstructions of trained models were not usable without per-layer
-  fitting, which erases most claimed savings, and that the related
-  carrier-mode recall failed about half of noise trials. The robust
-  design kept in the toolkit is the Reed-Solomon slot lattice
-  (ECC-Memory).
+- There is no data-fitting/training pipeline, pretrained generator, reconstruction-quality or accuracy evaluation, or evidence that generated tensors can replace trained model weights.
+- The reported compression ratio is arithmetic based on parameter counts, not a benchmark or demonstrated end-to-end compression result.
+- The generator handles `nn.Linear` layers only in its model traversal helper; it does not load the generated tensors into a model.
+- A wheel built from the current `pyproject.toml` did not contain `dna_pro.py` (it contained distribution metadata only). The source-tree commands above work, but installing the built wheel as an importable package is not currently verified and should not be relied on until packaging is corrected.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+The repository includes an MIT License. See [LICENSE](LICENSE) for its terms.
